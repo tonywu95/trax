@@ -18,6 +18,7 @@
 
 import copy
 import functools
+import gc
 import os
 import time
 from jax import test_util  # pylint: disable=unused-import
@@ -44,13 +45,31 @@ def size_of_model(model):
   return total_size
 
 
+def recurrent_delete(w):
+  if 'delete' in dir(w):
+    # Object has a 'delete' method, so it is a DeviceArray or something similar,
+    # so we want to delete it.
+    w.delete()
+  elif isinstance(w, (list, tuple)):
+    for x in w:
+      recurrent_delete(x)
+  elif isinstance(w, dict):
+    for x in w.values():
+      recurrent_delete(x)
+  else:
+    raise ValueError('Unknown type encountered in weights: {}'.format(type(w)))
+
+
 def memory_usage():
+  gc.collect()
   return psutil.Process(os.getpid()).memory_info().rss
 
 
 class DecodingTimingTest(test.TestCase):
 
   def _reformer2_decoding_time(self, settings):
+    # Garbage collection influences the timing, so we turn it off.
+    gc.disable()
     max_len = 16
 
     def _self_attention_fn():
@@ -82,6 +101,7 @@ class DecodingTimingTest(test.TestCase):
         ff_dropout=0.1,
         ff_chunk_size=1024,
         attention_chunk_size=1,
+        n_decoder_attention_layers=settings['attention_layers'],
         loss_sparsity=settings['loss_sparsity'],
         axial_pos_shape=None,
         use_bfloat16=True,
@@ -99,11 +119,12 @@ class DecodingTimingTest(test.TestCase):
     for index, sample in zip(range(-4, 10),
                              decoding.autoregressive_sample_stream(
                                  pred_model, inputs, temperature=0.0)):
-      peak_memory = max(peak_memory, memory_usage())
       result.append(sample[:, None])
       elapsed_time = time.time() - start_time
       if index >= 0:
         elapsed_times.append(elapsed_time)
+      if index == 5:
+        peak_memory = max(peak_memory, memory_usage())
       start_time = time.time()
 
     if min(elapsed_times) * 2 < max(elapsed_times):
@@ -115,26 +136,54 @@ class DecodingTimingTest(test.TestCase):
     s = np.concatenate(result, axis=1)
     self.assertEqual(s.shape[0], 1)
     self.assertEqual(s.shape[1], 14)
-    return size_of_model(pred_model), elapsed_times, peak_memory
+    model_size = int(size_of_model(pred_model))
+
+    # We delete the model weights, because in some situations they won't be
+    # deleted automatically.
+    recurrent_delete(pred_model.weights)
+    gc.enable()
+    return model_size, elapsed_times, peak_memory
 
   def test_autoregressive_sample_reformer2_timing(self):
     # full model
     # 54B params
     # base_settings = {
     #     'encoder_layers': 6, 'decoder_layers': 36, 'vocab': 32000,
+    #     'attention_layers': 2,
     #     'd_ff': 64*1024, 'd_model': 96*96, 'n_heads': 96,
-    #     'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32), 'loss_sparsity': 4,
+    #     'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32), 'loss_sparsity': 8,
     #     'attn': (tl.MultiplicativeConvCausalAttention,
     #              {'length_kernel_size': 1, 'sparsity': 64})}
 
-    # 1/18 of model (1/6 of encoder, 1/18 of decoder, 1/18 of vocab)
+    # 1/18 of model (1/6 of encoder, 1/18 of decoder, full vocab)
     # 4B params
     base_settings = {
-        'encoder_layers': 1, 'decoder_layers': 2, 'vocab': 7*256,
+        'encoder_layers': 1, 'decoder_layers': 2, 'vocab': 32000,
+        'attention_layers': 2,
         'd_ff': 64*1024, 'd_model': 96*96, 'n_heads': 96,
-        'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32), 'loss_sparsity': 4,
+        'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32), 'loss_sparsity': 8,
         'attn': (tl.MultiplicativeConvCausalAttention,
                  {'length_kernel_size': 1, 'sparsity': 64})}
+
+    # medium model
+    # 275M params
+    # base_settings = {
+    #     'encoder_layers': 2, 'decoder_layers': 24, 'vocab': 32000,
+    #     'attention_layers': 2,
+    #     'd_ff': 4*1024, 'd_model': 1024, 'n_heads': 16,
+    #     'ff_use_sru': 0, 'ff_sparsity': 64, 'loss_sparsity': 4,
+    #     'attn': (tl.MultiplicativeConvCausalAttention,
+    #              {'length_kernel_size': 1, 'sparsity': 16})}
+
+    # small model
+    # 24M params
+    # base_settings = {
+    #     'encoder_layers': 1, 'decoder_layers': 1, 'vocab': 1000,
+    #     'attention_layers': 1,
+    #     'd_ff': 4*1024, 'd_model': 1024, 'n_heads': 16,
+    #     'ff_use_sru': 0, 'ff_sparsity': 64, 'loss_sparsity': 4,
+    #     'attn': (tl.MultiplicativeConvCausalAttention,
+    #              {'length_kernel_size': 1, 'sparsity': 16})}
 
     all_settings = [
         # different attention layers
@@ -172,6 +221,7 @@ class DecodingTimingTest(test.TestCase):
 
     total_times = []
     sizes = []
+    memories = []
     messages = []
     for override_settings in all_settings:
       settings = copy.deepcopy(base_settings)
@@ -179,23 +229,31 @@ class DecodingTimingTest(test.TestCase):
 
       init_memory = memory_usage()
       size, elapsed_times, peak_memory = self._reformer2_decoding_time(settings)
-
+      after_memory = memory_usage()
+      model_memory_gigabytes = (peak_memory-init_memory)/1024**3
       total_time = sum(elapsed_times)
       time_diff = (max(elapsed_times) - min(elapsed_times)) / 2
       time_diff_percent = int(time_diff / np.mean(elapsed_times) * 100)
       message = (
-          '\n\nParams: {}\nSettings: {}\nOverride: {}\n'
-          'Init memory: {:.1f} GiB\nPeak memory: {:.1f} GiB\n'
+          '\n\n'
+          'Params: {}\n'
+          'Settings: {}\n'
+          'Override: {}\n'
+          'Init memory: {:.1f} GiB\n'
+          'Peak memory: {:.1f} GiB\n'
+          'After memory: {:.1f} GiB\n'
           'Estimated model memory: {:.1f} GiB\n'
-          'Time for 10 tokens: {:.4f} s +/- {} %\n\n\n'
+          'Time for 10 tokens: {:.4f} s +/- {} %\n'
+          '\n\n'
           .format(size, settings, override_settings,
                   init_memory/1024**3, peak_memory/1024**3,
-                  (peak_memory-init_memory)/1024**3,
+                  after_memory/1024**3, model_memory_gigabytes,
                   total_time, time_diff_percent))
       print(message)
       messages.append(message)
       total_times.append(total_time)
       sizes.append(size)
+      memories.append(model_memory_gigabytes)
 
     print('Final results (recap):')
     for message in messages:
@@ -203,7 +261,7 @@ class DecodingTimingTest(test.TestCase):
 
     # This is useful for copying results into a spreadsheet etc.
     for i in range(len(all_settings)):
-      print(sizes[i], total_times[i], sep='\t')
+      print('{}\t{}\t{:.1f}'.format(sizes[i], total_times[i], memories[i]))
 
   def test_loss_layer_timing(self):
     all_settings = [
