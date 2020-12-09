@@ -147,17 +147,17 @@ def LatentTransformer(input_vocab_size,
       tl.Select([0], n_in=2)) # vec_f
 
   latent_transition = tl.Serial(
-      tl.Parallel(
-          [tl.Dense(d_model), tl.Relu()],
-          [tl.Dense(d_model), tl.Relu()]
-      ),
+      # tl.Parallel(
+      #     [tl.Dense(d_model), tl.Relu()],
+      #     [tl.Dense(d_model), tl.Relu()]
+      # ),
       tl.Add(),
       tl.Residual(
       tl.LayerNorm(),
       tl.Dense(d_model),
-      tl.Relu(),
-      tl.Dropout(rate=dropout, mode=mode),
-      tl.Dense(d_model),
+      # tl.Relu(),
+      # tl.Dropout(rate=dropout, mode=mode),
+      # tl.Dense(d_model),
       ))
 
   pred_valid = tl.Serial(tl.Dense(2), Squeeze(1))
@@ -188,22 +188,34 @@ def LatentTransformer(input_vocab_size,
   # decode_seq: n_in 2 n_out 2: copy target, shift right, decode, output
 
 
+  # return tl.Serial(
+  #                                             #       0      1      2      3      4     5      6 7 8
+  #     # Input:                                #   tok_s  tok_a tok_s1      r      v
+  #     tl.Select([0, 1, 2, 0, 1, 3, 4]),       #   tok_s  tok_a tok_s1  tok_s  tok_a     r      v
+  #
+  #     # Encode.
+  #     tl.Parallel(compress_seq,
+  #                 compress_seq),              #   vec_s  vec_a tok_s1  tok_s  tok_a     r      v
+  #     tl.Branch(latent_transition,
+  #               [], tl.Select([1], n_in=2)),  #  vec_s1  vec_s  vec_a tok_s1  tok_s tok_a      r v
+  #     tl.Branch(pred_valid, []),              #  pred_v vec_s1  vec_s  vec_a tok_s1 tok_s  tok_a r v
+  #     # Decode.
+  #     tl.Select([1, 4, 2, 5, 3, 6, 0, 8, 7]), #  vec_s1 tok_s1  vec_s  tok_s  vec_a tok_a pred_v v r
+  #     tl.Parallel(decode_seq,
+  #                 decode_seq,
+  #                 decode_seq),                # pred_s1 tok_s1 pred_s  tok_s pred_a tok_a pred_v v r
+  # )
+
   return tl.Serial(
                                               #       0      1      2      3      4     5      6 7 8
       # Input:                                #   tok_s  tok_a tok_s1      r      v
       tl.Select([0, 1, 2, 0, 1, 3, 4]),       #   tok_s  tok_a tok_s1  tok_s  tok_a     r      v
 
       # Encode.
-      tl.Parallel(compress_seq,
-                  compress_seq),              #   vec_s  vec_a tok_s1  tok_s  tok_a     r      v
-      tl.Branch(latent_transition,
-                [], tl.Select([1], n_in=2)),  #  vec_s1  vec_s  vec_a tok_s1  tok_s tok_a      r v
-      tl.Branch(pred_valid, []),              #  pred_v vec_s1  vec_s  vec_a tok_s1 tok_s  tok_a r v
+      compress_seq,                           #   vec_s  tok_a tok_s1  tok_s  tok_a     r      v
       # Decode.
-      tl.Select([1, 4, 2, 5, 3, 6, 0, 8, 7]), #  vec_s1 tok_s1  vec_s  tok_s  vec_a tok_a pred_v v r
-      tl.Parallel(decode_seq,
-                  decode_seq,
-                  decode_seq),                # pred_s1 tok_s1 pred_s  tok_s pred_a tok_a pred_v v r
+      tl.Select([0, 3, 1, 2, 3, 3]),          #   vec_s  tok_s  tok_a  tok_s1 tok_s tok_s  tok_a v r
+      decode_seq,                             #  pred_s tok_s1  tok_a  tok_s1 tok_s tok_s  tok_a v r
   )
 
 
@@ -218,17 +230,6 @@ def PickFirst():
 
 
 def Squeeze(axis_to_squeeze=1):
-  """Returns a layer that combines one or more trailing axes of a tensor.
-
-  Flattening keeps all the values of the input tensor, but reshapes it by
-  collapsing one or more trailing axes into a single axis. For example, a
-  `Flatten(n_axes_to_keep=2)` layer would map a tensor with shape
-  `(2, 3, 5, 7, 11)` to the same values with shape `(2, 3, 385)`.
-
-  Args:
-    n_axes_to_keep: Number of leading axes to leave unchanged when reshaping;
-        collapse only the axes after these.
-  """
   layer_name = f'Squeeze{axis_to_squeeze}'
   def f(x):  # pylint: disable=invalid-name
     in_rank = len(x.shape)
