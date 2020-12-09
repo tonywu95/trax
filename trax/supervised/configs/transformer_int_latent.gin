@@ -28,7 +28,7 @@ int_latent_inputs.id_to_mask = 0
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 1000
+train.eval_frequency = 1
 train.eval_steps = 10
 train.inputs = @trax.data.inputs.int_latent_inputs
 train.model = @trax.models.LatentTransformer
