@@ -1,25 +1,27 @@
-from trax.layers import*
+import gin
 
+import trax.layers as tl
+from trax.fastmath import numpy as jnp
 
 Latent_METRICS  = {
-    'next_state_loss': Serial(Select([0,1,9]),
-                              WeightedCategoryCrossEntropy()),
-    'recon_state_loss': Serial(Select([2,3,10]),
-                               WeightedCategoryCrossEntropy()),
-    'recon_action_loss': Serial(Select([4,5,11]),
-                                WeightedCategoryCrossEntropy()),
-    'next_state_accuracy': Serial(Select([0,1,9]),
-                                  Accuracy()),
-    'recon_state_accuracy': Serial(Select([2,3,10]),
-                                   Accuracy()),
-    'recon_action_accuracy': Serial(Select([4,5,11]),
-                                    Accuracy()),
-    'next_state_sequence_accuracy': Serial(Select([0,1,9]),
-                                           SequenceAccuracy()),
-    'recon_state_sequence_accuracy': Serial(Select([2,3,10]),
-                                            SequenceAccuracy()),
-    'recon_action_sequence_accuracy': Serial(Select([4,5,11]),
-                                             SequenceAccuracy()),
+    'next_state_loss': tl.Serial(tl.Select([0,1,9]),
+                              tl.WeightedCategoryCrossEntropy()),
+    'recon_state_loss': tl.Serial(tl.Select([2,3,10]),
+                                           tl.WeightedCategoryCrossEntropy()),
+    'recon_action_loss': tl.Serial(tl.Select([4,5,11]),
+                                            tl.WeightedCategoryCrossEntropy()),
+    'next_state_accuracy': tl.Serial(tl.Select([0,1,9]),
+                                              tl.Accuracy()),
+    'recon_state_accuracy': tl.Serial(tl.Select([2,3,10]),
+                                               tl.Accuracy()),
+    'recon_action_accuracy': tl.Serial(tl.Select([4,5,11]),
+                                                tl.Accuracy()),
+    'next_state_sequence_accuracy': tl.Serial(tl.Select([0,1,9]),
+                                                       tl.SequenceAccuracy()),
+    'recon_state_sequence_accuracy': tl.Serial(tl.Select([2,3,10]),
+                                                        tl.SequenceAccuracy()),
+    'recon_action_sequence_accuracy': tl.Serial(tl.Select([4,5,11]),
+                                                         tl.SequenceAccuracy()),
     # 'neg_log_perplexity': Serial(WeightedCategoryCrossEntropy(),
     #                                 Negate()),
     # 'weights_per_batch_per_core': Serial(Drop(), Drop(), Sum()),
@@ -32,11 +34,12 @@ def latent_fn():
 
 
 def _category_cross_entropy(model_output, targets):  # pylint: disable=invalid-name
-  target_distributions = core.one_hot(targets, model_output.shape[-1])
-  model_log_distributions = core.log_softmax(model_output)
+  target_distributions = tl.core.one_hot(targets, model_output.shape[-1])
+  model_log_distributions = tl.core.log_softmax(model_output)
   return - jnp.sum(target_distributions * model_log_distributions, axis=-1)
 
 
+@gin.configurable
 def LatentLossFunction():
   """
   Computes loss for the latent world model:
@@ -56,4 +59,5 @@ def LatentLossFunction():
     loss = cross_entropies_st1 + cross_entropies_at + cross_entropies_st
     return loss
 
-  return base.Fn('LatentLossFunction', f)
+  return tl.base.Fn('LatentLossFunction', f)
+
