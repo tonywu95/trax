@@ -70,30 +70,6 @@ _DEFAULT_METRICS = {
     'weights_per_batch_per_core': tl.Serial(tl.Drop(), tl.Drop(), tl.Sum()),
 }
 
-_LATENT_METRICS = {
-    'next_state_loss': tl.Serial(tl.Select([0,1,9]),
-                      tl.WeightedCategoryCrossEntropy()),
-    'recon_state_loss': tl.Serial(tl.Select([2,3,10]),
-                      tl.WeightedCategoryCrossEntropy()),
-    'recon_action_loss': tl.Serial(tl.Select([4,5,11]),
-                         tl.WeightedCategoryCrossEntropy()),
-    'next_state_accuracy': tl.Serial(tl.Select([0,1,9]),
-                                     tl.Accuracy()),
-    'recon_state_accuracy': tl.Serial(tl.Select([2,3,10]),
-                                      tl.Accuracy()),
-    'recon_action_accuracy': tl.Serial(tl.Select([4,5,11]),
-                                       tl.Accuracy()),
-    'next_state_sequence_accuracy': tl.Serial(tl.Select([0,1,9]),
-                                     tl.SequenceAccuracy()),
-    'recon_state_sequence_accuracy': tl.Serial(tl.Select([2,3,10]),
-                                      tl.SequenceAccuracy()),
-    'recon_action_sequence_accuracy': tl.Serial(tl.Select([4,5,11]),
-                                       tl.SequenceAccuracy()),
-    # 'neg_log_perplexity': tl.Serial(tl.WeightedCategoryCrossEntropy(),
-    #                                 tl.Negate()),
-    # 'weights_per_batch_per_core': tl.Serial(tl.Drop(), tl.Drop(), tl.Sum()),
-}
-
 
 class Trainer:
   """Trax trainer.
@@ -529,8 +505,7 @@ class Trainer:
 @gin.configurable(denylist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
-          # loss_fn=tl.WeightedCategoryCrossEntropy(),
-          loss_fn=tl.LatentLossFunction(),
+          loss_fn=tl.WeightedCategoryCrossEntropy(),
           inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
           lr_schedule_fn=lr.multifactor,
@@ -593,8 +568,7 @@ def train(output_dir,
                                     n_steps_per_checkpoint=eval_frequency)
 
     # Prepare the evaluation.
-    # metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
-    metrics_dict = _LATENT_METRICS
+    metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     names, metrics = zip(*metrics_dict.items())
     eval_task = training.EvalTask(inputs.eval_stream(n_devices),
                                   metrics,

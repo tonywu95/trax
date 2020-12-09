@@ -20,27 +20,11 @@ import trax.layers
 
 # Parameters for int_latent_inputs:
 # ==============================================================================
-int_latent_inputs.batch_size_per_device = 32
-int_latent_inputs.eval_batch_size = 16
+int_latent_inputs.batch_size_per_device = 4
+int_latent_inputs.eval_batch_size = 2
 int_latent_inputs.max_eval_length = 1024
 int_latent_inputs.buckets_include_inputs_in_length=True
 int_latent_inputs.id_to_mask = 0
-
-# Parameters for multifactor:
-# ==============================================================================
-multifactor.constant = 1.0
-multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 20000
-
-# Parameters for Adafactor:
-# ==============================================================================
-Adafactor.beta1 = 0.0
-Adafactor.decay_rate = 0.8
-Adafactor.clipping_threshold = 1.0
-Adafactor.epsilon1 = 1e-16
-Adafactor.epsilon2 = 0.001
-Adafactor.factored = True
-Adafactor.multiply_by_parameter_scale = True
 
 # Parameters for train:
 # ==============================================================================
@@ -48,9 +32,31 @@ train.eval_frequency = 1000
 train.eval_steps = 10
 train.inputs = @trax.data.inputs.int_latent_inputs
 train.model = @trax.models.LatentTransformer
-# train.loss_fn = @trax.layers.LatentLossFunction()
+train.loss_fn = @trax.layers.LatentLossFunction()
 train.steps = 100000
 train.optimizer = @trax.optimizers.Adafactor
+train.metrics = {
+    'next_state_loss': @trax.layers.Serial(@trax.layers.Select([0,1,9]), @trax.layers.WeightedCategoryCrossEntropy()),
+    'recon_state_loss': @trax.layers.Serial(@trax.layers.Select([2,3,10]),
+                      @trax.layers.WeightedCategoryCrossEntropy()),
+    'recon_action_loss': @trax.layers.Serial(@trax.layers.Select([4,5,11]),
+                         @trax.layers.WeightedCategoryCrossEntropy()),
+    'next_state_accuracy': @trax.layers.Serial(@trax.layers.Select([0,1,9]),
+                                     @trax.layers.Accuracy()),
+    'recon_state_accuracy': @trax.layers.Serial(@trax.layers.Select([2,3,10]),
+                                      @trax.layers.Accuracy()),
+    'recon_action_accuracy': @trax.layers.Serial(@trax.layers.Select([4,5,11]),
+                                       @trax.layers.Accuracy()),
+    'next_state_sequence_accuracy': @trax.layers.Serial(@trax.layers.Select([0,1,9]),
+                                     @trax.layers.SequenceAccuracy()),
+    'recon_state_sequence_accuracy': @trax.layers.Serial(@trax.layers.Select([2,3,10]),
+                                      @trax.layers.SequenceAccuracy()),
+    'recon_action_sequence_accuracy': @trax.layers.Serial(@trax.layers.Select([4,5,11]),
+                                       @trax.layers.SequenceAccuracy()),
+    # 'neg_log_perplexity': @trax.layers.Serial(@trax.layers.WeightedCategoryCrossEntropy(),
+    #                                 @trax.layers.Negate()),
+    # 'weights_per_batch_per_core': @trax.layers.Serial(@trax.layers.Drop(), @trax.layers.Drop(), @trax.layers.Sum()),
+}
 
 # Parameters for Transformer*
 
@@ -62,14 +68,14 @@ train.optimizer = @trax.optimizers.Adafactor
 # n_heads = 8
 # n_encoder_layers = 6
 # n_decoder_layers = 6
-d_model = 64
-d_ff = 128
+d_model = 32
+d_ff = 64
 dropout = 0.1
 max_len = 2048
 mode = 'train'
 n_heads = 2
-n_encoder_layers = 2
-n_decoder_layers = 2
+n_encoder_layers = 1
+n_decoder_layers = 1
 input_vocab_size = 49
 
 # Parameters for Transformer:

@@ -36,6 +36,7 @@ from trax.layers.pooling import *
 from trax.layers.research.efficient_attention import *
 from trax.layers.research.position_encodings import *
 from trax.layers.research.sparsity import *
+from trax.layers.research.latent import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
 
@@ -94,3 +95,5 @@ TimeBinPositionalEncoding = layer_configure(
 
 AtariConvInit = layer_configure(AtariConvInit)
 CrossEntropyLossWithLogSoftmax = layer_configure(CrossEntropyLossWithLogSoftmax)
+LatentLossFunction = layer_configure(LatentLossFunction)
+
