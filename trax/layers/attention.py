@@ -377,6 +377,7 @@ def ShiftRight(n_positions=1, mode='train'):
   def f(x):
     if mode == 'predict':
       return x
+    import pdb;pdb.set_trace()
     padded = _zero_pad(x, (n_positions, 0), 1)
     return padded[:, :-n_positions]
   return Fn(f'ShiftRight({n_positions})', f)

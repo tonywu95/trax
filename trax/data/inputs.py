@@ -222,6 +222,7 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
 
     padded_tensors = [
         np.pad(t, [(0, len_per_dim[i] - t.shape[i]) for i in range(ndim)],
+        # np.pad(t, [(len_per_dim[i] - t.shape[i], 0) for i in range(ndim)],
                mode='constant', constant_values=t.dtype.type(0))
         for t in tensors]
 
@@ -695,7 +696,7 @@ def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             buckets_include_inputs_in_length=False,
             batch_shuffle_size=None, max_eval_length=None,
             # TODO(afrozm): Unify padding logic.
-            id_to_mask=None, strict_pad_on_len=False):
+            id_to_mask=None, strict_pad_on_len=False, len_fn=None, add_weights_fn=None):
   """Batcher: create trax Inputs from single-example data-streams."""
   # TODO(lukaszkaiser, jonni): revisit arguments, their semantics and naming.
   # For now leaving the arguments as in batch_fn to reduce gin config changes.
@@ -708,17 +709,17 @@ def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
       train_stream(), True, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len)
+      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len, len_fn, add_weights_fn)
   batch_eval_stream = lambda n_devices: batch_fn(
       eval_stream(), False, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len)
+      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len, len_fn, add_weights_fn)
   batch_train_eval_stream = lambda n_devices: batch_fn(
       train_stream(), False, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len)
+      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len, len_fn, add_weights_fn)
   # pylint: enable=g-long-lambda
   return Inputs(train_stream=batch_train_stream,
                 eval_stream=batch_eval_stream,
@@ -730,7 +731,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
              bucket_length=32, buckets=None,
              buckets_include_inputs_in_length=False,
              batch_shuffle_size=None, max_eval_length=None,
-             id_to_mask=None, strict_pad_on_len=False):
+             id_to_mask=None, strict_pad_on_len=False, len_fn=None, add_weights_fn=None):
   """Batching function."""
   # TODO(lukaszkaiser, jonni): revisit arguments, their semantics and naming.
   # After that, create a proper doc-string; we may also not need to pass both
@@ -762,14 +763,18 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
         other_length = example_inputs.shape[0]
       return max(target.shape[0], other_length)
     boundaries, batch_sizes = buckets
+    if len_fn is None:
+      len_fn = example_length
     dataset = bucket_by_length(
-        dataset, example_length, boundaries, batch_sizes, strict_pad_on_len)
+        dataset, len_fn, boundaries, batch_sizes, strict_pad_on_len)
   else:
     logging.info('Not Bucketing cur_batch_size %d.', cur_batch_size)
     dataset = batch(dataset, cur_batch_size)
   if training and batch_shuffle_size is not None:
     dataset = shuffle(dataset, batch_shuffle_size)
-  return add_loss_weights(dataset, id_to_mask)
+  if add_weights_fn is None:
+    add_weights_fn = add_loss_weights
+  return add_weights_fn(dataset, id_to_mask)
 
 
 # Example input functions.
@@ -977,3 +982,70 @@ def addition_inputs(
       train_stream=lambda _: batches(train_length, 3),
       eval_stream=lambda _: batches(eval_max_length, eval_min_length)
   )
+
+
+
+@gin.configurable()
+def int_latent_inputs(variable_shapes=True,
+            batch_size_per_device=32, batch_size=None, eval_batch_size=32,
+            bucket_length=32, buckets=None,
+            buckets_include_inputs_in_length=False,
+            batch_shuffle_size=None, max_eval_length=None,
+            # TODO(afrozm): Unify padding logic.
+            id_to_mask=None, strict_pad_on_len=False):
+  """Inputs for the sequence copy problem: 0w0w for w in [1..vocab_size-1]*.
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    train_length: maximum length of w for training.
+    eval_min_length: minimum length of w for eval.
+    eval_max_length : maximum length of w for eval.
+    reverse: bool (optional, false by default): reverse the second sequence.
+    pad_to_multiple: int, pad length to be multiple of this number.
+
+  Returns:
+    trax.inputs.Inputs
+  """
+  train_dataset = np.load("int_data/k3l7_10k/train.npy", allow_pickle=True).tolist()
+  valid_dataset = np.load("int_data/k3l7_10k/valid.npy", allow_pickle=True).tolist()
+
+  def dataset_to_stream(dataset):
+    for example in dataset:
+      st, at, st_1, r, v = example
+      st = np.array(st).astype(np.int32)
+      at = np.array(at).astype(np.int32)
+      st_1 = np.array(st_1).astype(np.int32)
+      r = np.array(r).astype(np.float32)
+      v = np.array(v).astype(np.float32)
+      yield st, at, st_1, r, v
+
+  train_stream = lambda: dataset_to_stream(train_dataset)
+  valid_stream = lambda: dataset_to_stream(valid_dataset)
+  stream = (train_stream, valid_stream)
+
+  def example_length(example):
+    """The length function used by bucket_by_sequence_length to bucket."""
+    # The input x is a tuple to go on the stack, typically either
+    # (input, target) or (input, target, mask).
+    st, at, st_1, r, v = example
+    # Length is the shape of axis 0 here (no batch yet).
+    return st.shape[0]
+
+  def add_loss_weights(generator, id_to_mask=None):
+    for example in generator:
+      st, at, st_1, r, v = example
+      def add_w(s):
+        weights = np.ones_like(s).astype(np.float32)
+        mask = 1.0 - np.equal(s, id_to_mask).astype(np.float32)
+        weights *= mask
+        # Drop the weight for starting token.
+        return weights[:, 1:]
+
+      yield st, at, st_1, r, v, add_w(st_1), add_w(st), add_w(at)
+
+  return batcher(stream, variable_shapes, batch_size_per_device, batch_size,
+          eval_batch_size, bucket_length, buckets, buckets_include_inputs_in_length,
+          batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len,
+                 example_length, add_loss_weights)
+

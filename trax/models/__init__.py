@@ -23,6 +23,7 @@ from trax.models import resnet
 from trax.models import rl
 from trax.models import rnn
 from trax.models import transformer
+from trax.models import latent_transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
 from trax.models.research import configurable_transformer
@@ -79,6 +80,7 @@ TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
 Transformer2 = model_configure(
     transformer2.Transformer2)
+LatentTransformer = model_configure(latent_transformer.LatentTransformer)
 WideResnet = model_configure(resnet.WideResnet)
 Policy = model_configure(rl.Policy)
 PolicyAndValue = model_configure(rl.PolicyAndValue)
