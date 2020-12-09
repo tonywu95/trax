@@ -97,3 +97,26 @@ AtariConvInit = layer_configure(AtariConvInit)
 CrossEntropyLossWithLogSoftmax = layer_configure(CrossEntropyLossWithLogSoftmax)
 LatentLossFunction = layer_configure(LatentLossFunction)
 
+Latent_METRICS  = {
+    'next_state_loss': Serial(trax.layers.Select([0,1,9]),
+                                          WeightedCategoryCrossEntropy()),
+    'recon_state_loss': Serial(Select([2,3,10]),
+                      WeightedCategoryCrossEntropy()),
+    'recon_action_loss': Serial(Select([4,5,11]),
+                         WeightedCategoryCrossEntropy()),
+    'next_state_accuracy': Serial(Select([0,1,9]),
+                                     Accuracy()),
+    'recon_state_accuracy': Serial(Select([2,3,10]),
+                                      Accuracy()),
+    'recon_action_accuracy': Serial(Select([4,5,11]),
+                                       trax.layers.Accuracy()),
+    'next_state_sequence_accuracy': trax.layers.Serial(trax.layers.Select([0,1,9]),
+                                     trax.layers.SequenceAccuracy()),
+    'recon_state_sequence_accuracy': trax.layers.Serial(trax.layers.Select([2,3,10]),
+                                      trax.layers.SequenceAccuracy()),
+    'recon_action_sequence_accuracy': trax.layers.Serial(trax.layers.Select([4,5,11]),
+                                       trax.layers.SequenceAccuracy()),
+    # 'neg_log_perplexity': trax.layers.Serial(trax.layers.WeightedCategoryCrossEntropy(),
+    #                                 trax.layers.Negate()),
+    # 'weights_per_batch_per_core': trax.layers.Serial(trax.layers.Drop(), trax.layers.Drop(), trax.layers.Sum()),
+}

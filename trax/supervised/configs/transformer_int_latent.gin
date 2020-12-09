@@ -35,28 +35,7 @@ train.model = @trax.models.LatentTransformer
 train.loss_fn = @trax.layers.LatentLossFunction()
 train.steps = 100000
 train.optimizer = @trax.optimizers.Adafactor
-train.metrics = {
-    'next_state_loss': @trax.layers.Serial(@trax.layers.Select([0,1,9]), @trax.layers.WeightedCategoryCrossEntropy()),
-    'recon_state_loss': @trax.layers.Serial(@trax.layers.Select([2,3,10]),
-                      @trax.layers.WeightedCategoryCrossEntropy()),
-    'recon_action_loss': @trax.layers.Serial(@trax.layers.Select([4,5,11]),
-                         @trax.layers.WeightedCategoryCrossEntropy()),
-    'next_state_accuracy': @trax.layers.Serial(@trax.layers.Select([0,1,9]),
-                                     @trax.layers.Accuracy()),
-    'recon_state_accuracy': @trax.layers.Serial(@trax.layers.Select([2,3,10]),
-                                      @trax.layers.Accuracy()),
-    'recon_action_accuracy': @trax.layers.Serial(@trax.layers.Select([4,5,11]),
-                                       @trax.layers.Accuracy()),
-    'next_state_sequence_accuracy': @trax.layers.Serial(@trax.layers.Select([0,1,9]),
-                                     @trax.layers.SequenceAccuracy()),
-    'recon_state_sequence_accuracy': @trax.layers.Serial(@trax.layers.Select([2,3,10]),
-                                      @trax.layers.SequenceAccuracy()),
-    'recon_action_sequence_accuracy': @trax.layers.Serial(@trax.layers.Select([4,5,11]),
-                                       @trax.layers.SequenceAccuracy()),
-    # 'neg_log_perplexity': @trax.layers.Serial(@trax.layers.WeightedCategoryCrossEntropy(),
-    #                                 @trax.layers.Negate()),
-    # 'weights_per_batch_per_core': @trax.layers.Serial(@trax.layers.Drop(), @trax.layers.Drop(), @trax.layers.Sum()),
-}
+train.metrics = @trax.layers.research.latent.latent_fn()
 
 # Parameters for Transformer*
 

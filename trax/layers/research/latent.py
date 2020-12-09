@@ -1,4 +1,34 @@
-from trax.layers.metrics import *
+from trax.layers import*
+
+
+Latent_METRICS  = {
+    'next_state_loss': Serial(Select([0,1,9]),
+                              WeightedCategoryCrossEntropy()),
+    'recon_state_loss': Serial(Select([2,3,10]),
+                               WeightedCategoryCrossEntropy()),
+    'recon_action_loss': Serial(Select([4,5,11]),
+                                WeightedCategoryCrossEntropy()),
+    'next_state_accuracy': Serial(Select([0,1,9]),
+                                  Accuracy()),
+    'recon_state_accuracy': Serial(Select([2,3,10]),
+                                   Accuracy()),
+    'recon_action_accuracy': Serial(Select([4,5,11]),
+                                    Accuracy()),
+    'next_state_sequence_accuracy': Serial(Select([0,1,9]),
+                                           SequenceAccuracy()),
+    'recon_state_sequence_accuracy': Serial(Select([2,3,10]),
+                                            SequenceAccuracy()),
+    'recon_action_sequence_accuracy': Serial(Select([4,5,11]),
+                                             SequenceAccuracy()),
+    # 'neg_log_perplexity': Serial(WeightedCategoryCrossEntropy(),
+    #                                 Negate()),
+    # 'weights_per_batch_per_core': Serial(Drop(), Drop(), Sum()),
+}
+
+
+@gin.configurable
+def latent_fn():
+  return Latent_METRICS
 
 
 def _category_cross_entropy(model_output, targets):  # pylint: disable=invalid-name

@@ -991,24 +991,19 @@ def int_latent_inputs(variable_shapes=True,
             bucket_length=32, buckets=None,
             buckets_include_inputs_in_length=False,
             batch_shuffle_size=None, max_eval_length=None,
-            # TODO(afrozm): Unify padding logic.
             id_to_mask=None, strict_pad_on_len=False):
-  """Inputs for the sequence copy problem: 0w0w for w in [1..vocab_size-1]*.
-
-  Args:
-    vocab_size: how many symbols to use.
-    batch_size: how large are the batches.
-    train_length: maximum length of w for training.
-    eval_min_length: minimum length of w for eval.
-    eval_max_length : maximum length of w for eval.
-    reverse: bool (optional, false by default): reverse the second sequence.
-    pad_to_multiple: int, pad length to be multiple of this number.
-
-  Returns:
-    trax.inputs.Inputs
+  """
   """
   train_dataset = np.load("int_data/k3l7_10k/train.npy", allow_pickle=True).tolist()
   valid_dataset = np.load("int_data/k3l7_10k/valid.npy", allow_pickle=True).tolist()
+
+  # 1. a. st  : current goal.                 (sequence)
+  #    b. at  : current action.               (sequence)
+  #    c. st_1: next action.                  (sequence)
+  #    d. r   : reward.                            (0/1)
+  #    e. v   : validity of the action.            (0/1)
+  # 2. <s> ...  <eos> for all st, at, st_1
+  # 3. Padding on the right:  <s> ... <eos> <pad> ... <pad>
 
   def dataset_to_stream(dataset):
     for example in dataset:
@@ -1026,10 +1021,8 @@ def int_latent_inputs(variable_shapes=True,
 
   def example_length(example):
     """The length function used by bucket_by_sequence_length to bucket."""
-    # The input x is a tuple to go on the stack, typically either
-    # (input, target) or (input, target, mask).
     st, at, st_1, r, v = example
-    # Length is the shape of axis 0 here (no batch yet).
+    # we use the length of the current goal to batch.
     return st.shape[0]
 
   def add_loss_weights(generator, id_to_mask=None):
@@ -1041,7 +1034,6 @@ def int_latent_inputs(variable_shapes=True,
         weights *= mask
         # Drop the weight for starting token.
         return weights[:, 1:]
-
       yield st, at, st_1, r, v, add_w(st_1), add_w(st), add_w(at)
 
   return batcher(stream, variable_shapes, batch_size_per_device, batch_size,
