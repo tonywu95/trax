@@ -3,35 +3,6 @@ import gin
 import trax.layers as tl
 from trax.fastmath import numpy as jnp
 
-Latent_METRICS  = {
-    'next_state_loss': tl.Serial(tl.Select([0,1,10]),
-                              tl.WeightedCategoryCrossEntropy()),
-    # 'recon_state_loss': tl.Serial(tl.Select([2,3,10]),
-    #                                        tl.WeightedCategoryCrossEntropy()),
-    # 'recon_action_loss': tl.Serial(tl.Select([4,5,11]),
-    #                                         tl.WeightedCategoryCrossEntropy()),
-    'next_state_accuracy': tl.Serial(tl.Select([0,1,10]),
-                                              tl.Accuracy()),
-    # 'recon_state_accuracy': tl.Serial(tl.Select([2,3,10]),
-    #                                            tl.Accuracy()),
-    # 'recon_action_accuracy': tl.Serial(tl.Select([4,5,11]),
-    #                                             tl.Accuracy()),
-    'next_state_sequence_accuracy': tl.Serial(tl.Select([0,1,10]),
-                                                       tl.SequenceAccuracy()),
-    # 'recon_state_sequence_accuracy': tl.Serial(tl.Select([2,3,10]),
-    #                                                     tl.SequenceAccuracy()),
-    # 'recon_action_sequence_accuracy': tl.Serial(tl.Select([4,5,11]),
-    #                                                      tl.SequenceAccuracy()),
-    # 'neg_log_perplexity': Serial(WeightedCategoryCrossEntropy(),
-    #                                 Negate()),
-    # 'weights_per_batch_per_core': Serial(Drop(), Drop(), Sum()),
-}
-
-
-@gin.configurable
-def latent_fn():
-  return Latent_METRICS
-
 
 def _category_cross_entropy(model_output, targets):  # pylint: disable=invalid-name
   target_distributions = tl.core.one_hot(targets, model_output.shape[-1])
@@ -62,3 +33,38 @@ def LatentLossFunction():
 
   return tl.base.Fn('LatentLossFunction', f)
 
+
+def DropLast():
+  """Drops the last stack element."""
+  def f(x, u):
+    return x
+  return tl.Fn('DropLast', f)
+
+Latent_METRICS  = {
+    'next_state_loss': tl.Serial(tl.Select([0,1,10]),
+                                 tl.WeightedCategoryCrossEntropy(), DropLast()),
+    # 'recon_state_loss': tl.Serial(tl.Select([2,3,10]),
+    #                                        tl.WeightedCategoryCrossEntropy()),
+    # 'recon_action_loss': tl.Serial(tl.Select([4,5,11]),
+    #                                         tl.WeightedCategoryCrossEntropy()),
+    'next_state_accuracy': tl.Serial(tl.Select([0,1,10]),
+                                     tl.Accuracy(), DropLast()),
+    # 'recon_state_accuracy': tl.Serial(tl.Select([2,3,10]),
+    #                                            tl.Accuracy()),
+    # 'recon_action_accuracy': tl.Serial(tl.Select([4,5,11]),
+    #                                             tl.Accuracy()),
+    'next_state_sequence_accuracy': tl.Serial(tl.Select([0,1,10]),
+                                              tl.SequenceAccuracy(), DropLast()),
+    # 'recon_state_sequence_accuracy': tl.Serial(tl.Select([2,3,10]),
+    #                                                     tl.SequenceAccuracy()),
+    # 'recon_action_sequence_accuracy': tl.Serial(tl.Select([4,5,11]),
+    #                                                      tl.SequenceAccuracy()),
+    # 'neg_log_perplexity': Serial(WeightedCategoryCrossEntropy(),
+    #                                 Negate()),
+    # 'weights_per_batch_per_core': Serial(tl.Drop(), Drop(), Sum()),
+}
+
+
+@gin.configurable
+def latent_fn():
+  return Latent_METRICS

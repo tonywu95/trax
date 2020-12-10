@@ -728,8 +728,6 @@ def Select(indices, n_in=None, name=None):
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
     selected = tuple(xs[i] for i in indices)
-    if name=='hey':
-      import pdb;pdb.set_trace()
     return selected[0] if len(selected) == 1 else selected
 
   return base.PureLayer(select, n_in=n_in, n_out=len(indices), name=name)
