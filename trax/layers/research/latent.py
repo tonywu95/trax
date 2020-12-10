@@ -1,5 +1,4 @@
 import gin
-
 import trax.layers as tl
 from trax.fastmath import numpy as jnp
 
@@ -20,8 +19,8 @@ def LatentLossFunction():
   4. predicting whether the action is valid for the current goal
 
   """
-  def f(pred_s1, tok_s1, pred_s, tok_s, pred_a, tok_a, pred_v, v, r, w_st1, w_st, w_at):
   # def f(pred_s, tok_s, pred_s1, tok_s1, pred_a, tok_a, pred_v, v, r, w_st1, w_st, w_at):
+  def f(pred_s1, tok_s1, pred_s, tok_s, pred_a, tok_a, pred_v, v, r, w_st1, w_st, w_at):
     def _cat_loss(out, tgt, weights):
       cross_entropies =  _category_cross_entropy(out, tgt)
       return jnp.sum(cross_entropies * weights) / jnp.sum(weights)
