@@ -112,11 +112,6 @@ def LatentTransformer(input_vocab_size,
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
-      # ct.EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-      #                 mode, ff_activation, ff_dropout, ff_chunk_size,
-      #                 ff_use_sru, ff_sparsity, ff_sparsity_type,
-      #                 attention_chunk_size, encoder_attention_type,
-      #                 n_encoder_attention_layers)
       _EncoderBlock(d_model, d_ff, n_heads,
                     dropout, dropout_shared_axes, mode, ff_activation)
       for i in range(n_encoder_layers)]
@@ -146,17 +141,17 @@ def LatentTransformer(input_vocab_size,
       tl.Select([0], n_in=2)) # vec_f
 
   latent_transition = tl.Serial(
-      # tl.Parallel(
-      #     [tl.Dense(d_model), tl.Relu()],
-      #     [tl.Dense(d_model), tl.Relu()]
-      # ),
+      tl.Parallel(
+          [tl.Dense(d_model), tl.Relu()],
+          [tl.Dense(d_model), tl.Relu()]
+      ),
       tl.Add(),
       tl.Residual(
       tl.LayerNorm(),
       tl.Dense(d_model),
-      # tl.Relu(),
-      # tl.Dropout(rate=dropout, mode=mode),
-      # tl.Dense(d_model),
+      tl.Relu(),
+      tl.Dropout(rate=dropout, mode=mode),
+      tl.Dense(d_model),
       ))
 
   pred_valid = tl.Serial(tl.Dense(2), Squeeze(1))
@@ -187,35 +182,35 @@ def LatentTransformer(input_vocab_size,
   # decode_seq: n_in 2 n_out 2: copy target, shift right, decode, output
 
 
-  # return tl.Serial(
-  #                                             #       0      1      2      3      4     5      6 7 8
-  #     # Input:                                #   tok_s  tok_a tok_s1      r      v
-  #     tl.Select([0, 1, 2, 0, 1, 3, 4]),       #   tok_s  tok_a tok_s1  tok_s  tok_a     r      v
-  #
-  #     # Encode.
-  #     tl.Parallel(compress_seq,
-  #                 compress_seq),              #   vec_s  vec_a tok_s1  tok_s  tok_a     r      v
-  #     tl.Branch(latent_transition,
-  #               [], tl.Select([1], n_in=2)),  #  vec_s1  vec_s  vec_a tok_s1  tok_s tok_a      r v
-  #     tl.Branch(pred_valid, []),              #  pred_v vec_s1  vec_s  vec_a tok_s1 tok_s  tok_a r v
-  #     # Decode.
-  #     tl.Select([1, 4, 2, 5, 3, 6, 0, 8, 7]), #  vec_s1 tok_s1  vec_s  tok_s  vec_a tok_a pred_v v r
-  #     tl.Parallel(decode_seq,
-  #                 decode_seq,
-  #                 decode_seq),                # pred_s1 tok_s1 pred_s  tok_s pred_a tok_a pred_v v r
-  # )
-
   return tl.Serial(
                                               #       0      1      2      3      4     5      6 7 8
       # Input:                                #   tok_s  tok_a tok_s1      r      v
       tl.Select([0, 1, 2, 0, 1, 3, 4]),       #   tok_s  tok_a tok_s1  tok_s  tok_a     r      v
 
       # Encode.
-      compress_seq,                           #   vec_s  tok_a tok_s1  tok_s  tok_a     r      v
+      tl.Parallel(compress_seq,
+                  compress_seq),              #   vec_s  vec_a tok_s1  tok_s  tok_a     r      v
+      tl.Branch(latent_transition,
+                [], tl.Select([1], n_in=2)),  #  vec_s1  vec_s  vec_a tok_s1  tok_s tok_a      r v
+      tl.Branch(pred_valid, []),              #  pred_v vec_s1  vec_s  vec_a tok_s1 tok_s  tok_a r v
       # Decode.
-      tl.Select([0, 3, 1, 2, 3, 3]),          #   vec_s  tok_s  tok_a  tok_s1 tok_s tok_s  tok_a v r
-      decode_seq,                             #  pred_s tok_s1  tok_a  tok_s1 tok_s tok_s  tok_a v r
+      tl.Select([1, 4, 2, 5, 3, 6, 0, 8, 7]), #  vec_s1 tok_s1  vec_s  tok_s  vec_a tok_a pred_v v r
+      tl.Parallel(decode_seq,
+                  decode_seq,
+                  decode_seq),                # pred_s1 tok_s1 pred_s  tok_s pred_a tok_a pred_v v r
   )
+
+  # return tl.Serial(
+  #                                             #       0      1      2      3      4     5      6 7 8
+  #     # Input:                                #   tok_s  tok_a tok_s1      r      v
+  #     tl.Select([0, 1, 2, 0, 1, 3, 4]),       #   tok_s  tok_a tok_s1  tok_s  tok_a     r      v
+  #
+  #     # Encode.
+  #     compress_seq,                           #   vec_s  tok_a tok_s1  tok_s  tok_a     r      v
+  #     # Decode.
+  #     tl.Select([0, 3, 1, 2, 3, 3]),          #   vec_s  tok_s  tok_a  tok_s1 tok_s tok_s  tok_a v r
+  #     decode_seq,                             #  pred_s tok_s1  tok_a  tok_s1 tok_s tok_s  tok_a v r
+  # )
 
 
 @assert_shape('bld->b1d')
