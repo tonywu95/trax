@@ -26,6 +26,12 @@ int_latent_inputs.max_eval_length = 1024
 int_latent_inputs.buckets_include_inputs_in_length=True
 int_latent_inputs.id_to_mask = 0
 
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 0.001
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 8000
+
 # Parameters for train:
 # ==============================================================================
 train.eval_frequency = 1
