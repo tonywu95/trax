@@ -1006,13 +1006,18 @@ def int_latent_inputs(variable_shapes=True,
   # 3. Padding on the right:  <s> ... <eos> <pad> ... <pad>
 
   def dataset_to_stream(dataset):
-    for example in dataset:
-      st, at, st_1, r, v = example
+    # for example in dataset:
+    i = 0
+    while True:
+      if i%len(dataset) == 0:
+        random.shuffle(dataset)
+      st, at, st_1, r, v = dataset[i%(len(dataset))]
       st = np.array(st).astype(np.int32)
       at = np.array(at).astype(np.int32)
       st_1 = np.array(st_1).astype(np.int32)
       r = np.array(r).astype(np.float32)
       v = np.array(v).astype(np.float32)
+      i += 1
       yield st, at, st_1, r, v
 
   train_stream = lambda: dataset_to_stream(train_dataset)
