@@ -112,11 +112,13 @@ def LatentTransformer(input_vocab_size,
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
-      ct.EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                      mode, ff_activation, ff_dropout, ff_chunk_size,
-                      ff_use_sru, ff_sparsity, ff_sparsity_type,
-                      attention_chunk_size, encoder_attention_type,
-                      n_encoder_attention_layers)
+      # ct.EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+      #                 mode, ff_activation, ff_dropout, ff_chunk_size,
+      #                 ff_use_sru, ff_sparsity, ff_sparsity_type,
+      #                 attention_chunk_size, encoder_attention_type,
+      #                 n_encoder_attention_layers)
+      _EncoderBlock(d_model, d_ff, n_heads,
+                    dropout, dropout_shared_axes, mode, ff_activation)
       for i in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
   # padding = tl.Branch([], tl.PaddingMask)
@@ -132,11 +134,8 @@ def LatentTransformer(input_vocab_size,
 
   # pylint: disable=g-complex-comprehension
   decoder_blocks = [
-      ct.DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                      mode, ff_activation, ff_dropout, ff_chunk_size,
-                      ff_use_sru, ff_sparsity, ff_sparsity_type,
-                      attention_chunk_size, decoder_attention_type,
-                      n_decoder_attention_layers)
+      _DecoderBlock(d_model, d_ff, n_heads,
+                    dropout, dropout_shared_axes, mode, ff_activation)
       for i in range(n_decoder_layers)]
 
   compress_seq = tl.Serial(
@@ -275,3 +274,132 @@ def DropLast(mode):
   return Fn(f'DropLast', f)
 
 
+def _DecoderBlock(d_model, d_ff, n_heads,
+                  dropout, dropout_shared_axes, mode, ff_activation):
+  """Returns a list of layers that implements a Transformer decoder block.
+
+  The input is an activation tensor.
+
+  Args:
+    d_model: Final dimension of tensors at most points in the model, including
+        the initial embedding output.
+    d_ff: Size of special dense layer in the feed-forward part of each block.
+    n_heads: Number of attention heads.
+    dropout: Stochastic rate (probability) for dropping an activation value
+        when applying dropout within a block.
+    dropout_shared_axes: Tensor axes on which to share a dropout mask.
+        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
+        a useful way to save memory and apply consistent masks to activation
+        vectors at different sequence positions.
+    mode: If `'train'`, each block will include dropout; else, it will
+        pass all values through unaltered.
+    ff_activation: Type of activation function at the end of each block; must
+        be an activation-type subclass of `Layer`.
+
+  Returns:
+    A list of layers that maps an activation tensor to an activation tensor.
+  """
+  causal_attention = tl.CausalAttention(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode),
+
+  feed_forward = _FeedForwardBlock(
+      d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
+
+  dropout_ = tl.Dropout(
+      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+
+  return [
+      tl.Residual(
+          tl.LayerNorm(),
+          causal_attention,
+          dropout_,
+      ),
+      tl.Residual(
+          feed_forward
+      ),
+  ]
+
+
+def _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes,
+                      mode, activation):
+  """Returns a list of layers implementing a feed-forward block.
+
+  Args:
+    d_model: Final dimension of tensors at most points in the model, including
+        the initial embedding output.
+    d_ff: Size of special dense layer in the feed-forward part of each block.
+    dropout: Stochastic rate (probability) for dropping an activation value
+        when applying dropout within a block.
+    dropout_shared_axes: Tensor axes on which to share a dropout mask.
+        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
+        a useful way to save memory and apply consistent masks to activation
+        vectors at different sequence positions.
+    mode: If `'train'`, each block will include dropout; else, it will
+        pass all values through unaltered.
+    activation: Type of activation function at the end of each block; must
+        be an activation-type subclass of `Layer`.
+
+  Returns:
+    A list of layers which maps vectors to vectors.
+  """
+  dropout_middle = tl.Dropout(
+      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+  dropout_final = tl.Dropout(
+      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+
+  return [
+      tl.LayerNorm(),
+      tl.Dense(d_ff),
+      activation(),
+      dropout_middle,
+      tl.Dense(d_model),
+      dropout_final,
+  ]
+
+
+def _EncoderBlock(d_model, d_ff, n_heads,
+                  dropout, dropout_shared_axes, mode, ff_activation):
+  """Returns a list of layers that implements a Transformer encoder block.
+
+  The input to the block is a pair, (activations, mask), where the mask was
+  created from the original source tokens to prevent attending to the padding
+  part of the input.
+
+  Args:
+    d_model: Final dimension of tensors at most points in the model, including
+        the initial embedding output.
+    d_ff: Size of special dense layer in the feed-forward part of each block.
+    n_heads: Number of attention heads.
+    dropout: Stochastic rate (probability) for dropping an activation value
+        when applying dropout within a block.
+    dropout_shared_axes: Tensor axes on which to share a dropout mask.
+        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
+        a useful way to save memory and apply consistent masks to activation
+        vectors at different sequence positions.
+    mode: If `'train'`, each block will include dropout; else, it will
+        pass all values through unaltered.
+    ff_activation: Type of activation function at the end of each block; must
+        be an activation-type subclass of `Layer`.
+
+  Returns:
+    A list of layers that maps (activations, mask) to (activations, mask).
+  """
+  attention = tl.Attention(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+
+  feed_forward = _FeedForwardBlock(
+      d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
+
+  dropout_ = tl.Dropout(
+      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+
+  return [
+      tl.Residual(
+          tl.LayerNorm(),
+          attention,
+          dropout_,
+      ),
+      tl.Residual(
+          feed_forward
+      ),
+  ]
